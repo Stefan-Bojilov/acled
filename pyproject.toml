@@ -16,6 +16,11 @@ classifiers = [
     "License :: OSI Approved :: MIT License"
 ]
 dependencies = [
+    "aiohttp>=3.12.13",
+    "azure-identity>=1.23.0",
+    "azure-keyvault-secrets>=4.9.0",
+    "boto3>=1.39.1",
+    "dagster-webserver>=1.10.20",
     "ipython",
     "jupyterlab",
     "loguru",
@@ -24,12 +29,14 @@ dependencies = [
     "numpy",
     "pandas",
     "pip",
+    "polars>=1.31.0",
     "pytest",
     "python-dotenv",
     "ruff",
     "scikit-learn",
     "tqdm",
     "typer",
+    "xlsxwriter>=3.2.5",
 ]
 requires-python = "~=3.10.0"
 
