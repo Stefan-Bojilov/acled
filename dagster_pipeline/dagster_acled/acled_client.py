@@ -1,9 +1,12 @@
-from datetime import date
+import os
 from typing import Optional, Union
 
+from config.secrets_config import SecretManager
 from dagster import Config
-from pydantic import Field, HttpUrl
+from pydantic import Field
 
+sm = SecretManager(region_name="eu-north-1")
+API_KEY = sm.get_secret('ACLED-API')
 
 class AcledClientConfig(Config):
     """
@@ -15,7 +18,7 @@ class AcledClientConfig(Config):
         description="The endpoint for the ACLED API."
     )
     api_key: str = Field(
-        default=None,
+        default=API_KEY,
         description="API key for accessing the ACLED API."
     )
     endpoint: str = Field(
@@ -23,8 +26,13 @@ class AcledClientConfig(Config):
         description="The specific endpoint for the ACLED API."
     )
     email: str = Field(
-        default=None,
+        default=os.environ['EMAIL'],
         description="Email associated with the ACLED API account."
+    )
+
+    max_pages: int = Field(
+        default=5000, 
+        description="Maximum number of pages to fetch from the ACLED API."
     )
 
 
@@ -36,7 +44,7 @@ class AcledConfig(AcledClientConfig):
     event_id_cnty: Optional[str] = Field(default=None, description="Filter on event_id_cnty (LIKE)")
     event_id_cnty_where: Optional[str] = Field(default=None, description="Override operator for event_id_cnty filter")
 
-    event_date: Optional[date] = Field(default=None, description="Filter on event_date (equals)")
+    event_date: Optional[int] = Field(default=None, description="Filter on event_date (equals)")
     event_date_where: Optional[str] = Field(default=None, description="Override operator for event_date filter")
 
     year: Optional[int] = Field(default=None, description="Filter on year (equals)")
@@ -78,7 +86,7 @@ class AcledConfig(AcledClientConfig):
     civilian_targeting: Optional[str] = Field(default=None, description="Filter on civilian_targeting (LIKE)")
     civilian_targeting_where: Optional[str] = Field(default=None, description="Override operator for civilian_targeting filter")
 
-    iso: Optional[int] = Field(default=None, description="Filter on iso (equals)")
+    iso: Optional[int] = Field(default=804, description="Filter on iso (equals)")
     iso_where: Optional[str] = Field(default=None, description="Override operator for iso filter")
 
     region: Optional[int] = Field(default=None, description="Filter on region (equals)")
@@ -120,7 +128,7 @@ class AcledConfig(AcledClientConfig):
     fatalities: Optional[int] = Field(default=None, description="Filter on fatalities (equals)")
     fatalities_where: Optional[str] = Field(default=None, description="Override operator for fatalities filter")
 
-    timestamp: Optional[Union[int, date]] = Field(default=None, description="Filter on timestamp (>=)")
+    timestamp: Optional[Union[int]] = Field(default=None, description="Filter on timestamp (>=)")
     timestamp_where: Optional[str] = Field(default=None, description="Override operator for timestamp filter")
 
     export_type: Optional[str] = Field(default=None, description="Filter on export_type (equals)")
@@ -132,13 +140,16 @@ class AcledConfig(AcledClientConfig):
         """
         params = {"key": self.api_key, "email": self.email}
         for field, value in self.__dict__.items():
-            if value is None or field in {"api_key", "email"}:
+            if field in {"api_key", "email"} or field.endswith("_where"):
                 continue
-            if field.endswith("_where"):
+
+            if value is None:
                 continue
+
             where = getattr(self, f"{field}_where", None)
             key = f"{field}_where" if where else field
             params[key] = value
+
         return params
 
     @property
@@ -150,4 +161,3 @@ class AcledConfig(AcledClientConfig):
         base = f"{self.base_url.rstrip('/')}/{self.endpoint}"
         query = urlencode(self.build_params(), doseq=True)
         return f"{base}?{query}"
-    
