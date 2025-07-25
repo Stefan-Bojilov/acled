@@ -1,5 +1,11 @@
-import dagster as dg
+from dagster import DailyPartitionsDefinition, WeeklyPartitionsDefinition
 
-weekly_partition = dg.WeeklyPartitionsDefinition(
-    start_date="2025-01-03"
+weekly_partition = WeeklyPartitionsDefinition(
+    start_date="2024-12-30",
+    day_offset=1
+    )
+
+daily_partition = DailyPartitionsDefinition(
+    start_date='2024-12-30'
 )
+

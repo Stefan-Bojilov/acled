@@ -1,13 +1,15 @@
-import os
+import os  # noqa: I001
 from typing import Optional, Union
+from dotenv import load_dotenv
 
-from config.secrets_config import SecretManager
+from dagster_acled.secrets_config import SecretManager
 from dagster import Config
 from pydantic import Field
 
-sm = SecretManager(region_name="eu-north-1")
-API_KEY = sm.get_secret('ACLED-API')
+load_dotenv()
 
+sm = SecretManager(region_name=os.environ['REGION_NAME'])
+API_KEY = sm.get_secret('ACLED-API').get('ACLED-API')
 class AcledClientConfig(Config):
     """
     Configuration for the ACLED client.
@@ -86,7 +88,7 @@ class AcledConfig(AcledClientConfig):
     civilian_targeting: Optional[str] = Field(default=None, description="Filter on civilian_targeting (LIKE)")
     civilian_targeting_where: Optional[str] = Field(default=None, description="Override operator for civilian_targeting filter")
 
-    iso: Optional[int] = Field(default=804, description="Filter on iso (equals)")
+    iso: Optional[str] = Field(default="804", description="Filter on iso (equals)")
     iso_where: Optional[str] = Field(default=None, description="Override operator for iso filter")
 
     region: Optional[int] = Field(default=None, description="Filter on region (equals)")
