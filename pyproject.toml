@@ -17,9 +17,12 @@ classifiers = [
 ]
 dependencies = [
     "aiohttp>=3.12.13",
+    "aws-advanced-python-wrapper>=1.2.0",
     "azure-identity>=1.23.0",
     "azure-keyvault-secrets>=4.9.0",
     "boto3>=1.39.1",
+    "dagster-aws>=0.27.1",
+    "dagster-duckdb>=0.27.1",
     "dagster-webserver>=1.10.20",
     "ipython",
     "jupyterlab",
@@ -30,6 +33,8 @@ dependencies = [
     "pandas",
     "pip",
     "polars>=1.31.0",
+    "psycopg>=3.2.9",
+    "psycopg2-binary>=2.9.10",
     "pytest",
     "python-dotenv",
     "ruff",
