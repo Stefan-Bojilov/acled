@@ -3,9 +3,8 @@ from datetime import date, datetime, timedelta
 
 import aiohttp
 import dagster as dg
-from dagster import RunRequest, SkipReason
+from dagster_pipeline.dagster_acled.acled_request_config import AcledConfig
 
-from dagster_acled.acled_client import AcledConfig
 from dagster_acled.jobs import acled_update_job
 from dagster_acled.utils import fetch_page
 
