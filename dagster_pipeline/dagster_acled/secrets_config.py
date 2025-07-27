@@ -52,7 +52,7 @@ class SecretManager:
             secret_str = response.get("SecretString")
             if secret_str:
                 try:
-                    secret_dict = json.loads(secret_str)
+                    secret_dict: dict = json.loads(secret_str)
                     if field_name:
                         return secret_dict.get(field_name)
                     return secret_dict

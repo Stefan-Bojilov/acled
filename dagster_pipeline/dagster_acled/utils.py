@@ -1,8 +1,4 @@
-from datetime import date, datetime
-
 import aiohttp
-
-from dagster_acled.acled_client import AcledConfig
 
 
 async def fetch_page(session: aiohttp.ClientSession, url: str, params: dict) -> list[dict]:
