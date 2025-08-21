@@ -1,0 +1,69 @@
+asset_checks:
+  file_exists:
+    name: "{country}_file_exists_check"
+    description: "Verify ACLED {country} daily file exists in S3"
+    blocking: false
+    enabled: true
+    
+  data_not_empty:
+    name: "{country}_data_not_empty_check"
+    description: "Verify ACLED {country} daily data is not empty"
+    blocking: true
+    enabled: true
+    
+  required_columns:
+    name: "{country}_required_columns_check" 
+    description: "Verify ACLED {country} daily data has all required columns"
+    blocking: false
+    enabled: true
+    required_columns:
+      - "event_date"
+      - "event_type" 
+      - "country"
+      - "admin1"
+      - "admin2"
+      - "latitude"
+      - "longitude"
+      - "fatalities"
+      
+  event_date_partition:
+    name: "{country}_event_date_partition_check"
+    description: "Verify event_date matches partition for {country}"
+    blocking: true
+    enabled: true
+    
+  coordinates_validation:
+    name: "{country}_coordinates_validation_check"
+    description: "Verify latitude/longitude are valid for {country}"
+    blocking: false
+    enabled: true
+    lat_range: [-90, 90]
+    lon_range: [-180, 180]
+    
+  fatalities_validation:
+    name: "{country}_fatalities_validation_check"
+    description: "Verify fatalities are numeric and non-negative for {country}"
+    blocking: false
+    enabled: true
+    min_value: 0
+    
+  event_types_validation:
+    name: "{country}_event_types_validation_check"
+    description: "Verify event_type values are valid for {country}"
+    blocking: false
+    enabled: true
+    valid_event_types:
+      - "Violence against civilians"
+      - "Battles"
+      - "Explosions/Remote violence"
+      - "Riots"
+      - "Protests"
+      - "Strategic developments"
+      
+  duplicate_records:
+    name: "{country}_duplicate_records_check"
+    description: "Check for duplicate records for {country}"
+    blocking: false
+    enabled: true
+    key_fields:
+      - "event_id_cnty"
