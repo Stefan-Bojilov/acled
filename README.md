@@ -76,7 +76,8 @@ ACLED API → Data Ingestion → S3 Storage → Data Validation → PostgreSQL �
 - Asset lineage tracking and dependency management
 - Comprehensive logging and error handling
 
-Business Intelligence ReportsThe platform automatically generates professional, multi-page intelligence reports combining data quality metrics, regional analysis, and ML-powered forecasts. These reports demonstrate automated stakeholder communication capabilities essential for production data systems.
+## Business Intelligence Reports
+The platform automatically generates professional, multi-page intelligence reports combining data quality metrics, regional analysis, and ML-powered forecasts. These reports demonstrate automated stakeholder communication capabilities essential for production data systems.
 <img width="1070" height="748" alt="image" src="https://github.com/user-attachments/assets/5d2bfe99-3f35-4b0f-a8dd-ea103635fb1c" />
 <img width="1053" height="739" alt="image" src="https://github.com/user-attachments/assets/78c57314-c385-4ece-8f50-661db55d9bdc" />
 
