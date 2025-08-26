@@ -1,33 +1,29 @@
 from datetime import date, datetime
-import io
-import os
 
 import aiohttp
 import dagster as dg
 from dagster_acled.partitions import daily_partition
 from dagster_acled.utils import fetch_page
-from dagster_aws.s3 import S3Resource
 from dagster_pipeline.dagster_acled.acled_request_config import AcledConfig
 from dagster_pipeline.dagster_acled.resources.resources import PostgreSQLResource
 import polars as pl
 
 
 @dg.asset(
-    name="acled_daily_to_s3",
+    name="acled_daily_data", 
     partitions_def=daily_partition,
-    description="Fetch ACLED events for the current day and store them in S3.",
+    description="Fetch ACLED events for the current day.",
     group_name="acled",
+    io_manager_key="s3_io_manager", 
 )
 async def acled_request_daily(
     context: dg.AssetExecutionContext,
     config: AcledConfig,
-    s3: S3Resource,
-) -> dg.MaterializeResult:
+) -> pl.DataFrame:  
     """
-    Fetch ACLED events for this day's partition,
-    verify coverage of event_date, and log an error if data is missing.
+    Fetch ACLED events for this day's partition.
+    IO manager handles S3 storage automatically.
     """
-    # derive day from the partition time window
     day: date = context.partition_time_window.start.date()
     
     url = f"{config.base_url.rstrip('/')}/{config.endpoint}"
@@ -59,7 +55,6 @@ async def acled_request_daily(
     
     if len(df) == 0:
         context.log.error(f"No data returned for day {day}.")
-        # TODO make clearer that this is an error from an empty partition
         raise dg.DagsterInvalidSubsetError()
     
     # verify that event_date matches the partition day
@@ -71,92 +66,53 @@ async def acled_request_daily(
                 f"found dates {dates.to_list()}"
             )
     
-    buf = io.BytesIO()
-    df.write_parquet(buf)
-    buf.seek(0)
+    context.log.info(f"Fetched {len(df)} records for {day}")
     
-    # Upload to S3
-    bucket = os.environ['S3_BUCKET']
-    key = f"acled/daily_partitions/acled_{day}.parquet"
+    event_type_counts = (df.select("event_type")
+                        .to_series()
+                        .value_counts()
+                        .sort("count", descending=True))
     
-    client = s3.get_client()
-    client.put_object(Bucket=bucket, Key=key, Body=buf.read())
+    context.add_output_metadata({
+        "event_date": dg.TimestampMetadataValue(
+            datetime.combine(day, datetime.min.time()).timestamp()
+        ),
+        "number_of_records": len(df),
+        "event_type_distribution": dg.TableMetadataValue(
+            records=[dg.TableRecord(record) for record in event_type_counts.to_dicts()],
+            schema=dg.TableSchema(columns=[
+                dg.TableColumn(name="event_type"),
+                dg.TableColumn(name="count", type="int"),
+            ])
+        )
+    })
     
-    context.log.info(f"Uploaded to s3://{bucket}/{key}")
-    
-    # Materialize result with metadata
-    day_ts = datetime.combine(day, datetime.min.time()).timestamp()
-    
-    event_type_df = (df.select("event_type")
-                      .to_series()
-                      .value_counts()
-                      .sort("count", descending=True))
-    
-    schema = dg.TableSchema(
-        columns=[
-            dg.TableColumn(name="event_type"),
-            dg.TableColumn(name="count", type="int"),
-        ]
-    )
-    
-    return dg.MaterializeResult(
-        metadata={
-            "event_date": dg.TimestampMetadataValue(day_ts),
-            "number_of_records": len(df),
-            "event_type_distribution": dg.TableMetadataValue(
-                records=[dg.TableRecord(record) for record in event_type_df.to_dicts()], 
-                schema=schema
-            )
-        }
-    )
-
+    # Return DataFrame - IO manager handles S3 storage
+    return df
 
 
 @dg.asset(
     name="acled_daily_to_postgres",
     partitions_def=daily_partition,
-    description="Fetch ACLED events for a single day and upsert into PostgreSQL.",
+    description="Load ACLED events from S3 and upsert into PostgreSQL.",
     group_name="acled",
-    deps=[acled_request_daily],  # Add this line to create the dependency
 )
-async def acled_daily_to_postgres_from_s3(
+async def acled_daily_to_postgres(
     context: dg.AssetExecutionContext,
-    config: AcledConfig,
+    acled_daily_data: pl.DataFrame, 
     postgres: PostgreSQLResource,
-    s3: S3Resource,  # Add S3 resource to read the data
 ) -> dg.MaterializeResult:
-    # Determine the partition date
+    """
+    Insert ACLED data to Postgres.
+    Input DataFrame is automatically loaded from S3 by IO manager.
+    """
     partition_date = context.partition_time_window.start.date()
     
-    # Instead of fetching from API, read from S3 where acled_request_daily stored it
-    bucket = os.environ['S3_BUCKET']
-    key = f"acled/daily_partitions/acled_{partition_date}.parquet"
+    # acled_daily_data is automatically loaded from S3 by the IO manager
+    context.log.info(f"Processing {len(acled_daily_data)} records for {partition_date}")
     
-    try:
-        # Read the data from S3
-        client = s3.get_client()
-        response = client.get_object(Bucket=bucket, Key=key)
-        file_content = response['Body'].read()
-        
-        # Read the parquet file
-        buf = io.BytesIO(file_content)
-        df = pl.read_parquet(buf)
-        
-        context.log.info(f"Read {len(df)} records from s3://{bucket}/{key}")
-        
-    except client.exceptions.NoSuchKey:
-        context.log.error(f"File not found: s3://{bucket}/{key}")
-        return dg.MaterializeResult(
-            metadata={"error": f"No data file found for {partition_date}"}
-        )
-    except Exception as e:
-        context.log.error(f"Error reading from S3: {str(e)}")
-        return dg.MaterializeResult(
-            metadata={"error": f"Failed to read data: {str(e)}"}
-        )
-    
-    # Cast types (the data from S3 should already have correct types, but ensure consistency)
-    df = df.with_columns([
+    # Cast types (ensure data consistency)
+    df = acled_daily_data.with_columns([
         pl.col("event_date").cast(pl.Date),
         pl.col("year").cast(pl.Int32, strict=False),
         pl.col("time_precision").cast(pl.Int32, strict=False),
@@ -179,14 +135,12 @@ async def acled_daily_to_postgres_from_s3(
         .alias("event_timestamp"),
     ])
     
-    # Handle empty or missing data
     if df.is_empty():
         context.log.error(f"No data available for {partition_date}.")
         return dg.MaterializeResult(
             metadata={"error": f"No data for {partition_date}"}
         )
     
-    # Compute first/last and detect missing
     first = df["event_date"].min()
     last = df["event_date"].max()
     missing = []
@@ -196,11 +150,9 @@ async def acled_daily_to_postgres_from_s3(
         )
         missing = [partition_date]
 
-    # Upsert into PostgreSQL
     conn = postgres.get_connection()
     table = "acled_events_no_delete"
     
-    # Ensure table exists
     create_sql = f"""
         CREATE TABLE IF NOT EXISTS {table} (
             event_id_cnty TEXT PRIMARY KEY,
@@ -275,32 +227,70 @@ async def acled_daily_to_postgres_from_s3(
     finally:
         conn.close()
 
-    # Prepare metadata
     event_counts = (
         df.select("event_type")
         .to_series()
         .value_counts()
         .sort("count", descending=True)
     )
-    
+
+    key_columns = ["country", "admin1", "event_type", "fatalities", "latitude", "longitude", "notes"]
+    missing_data = []
+    missing_totals = {}
+
+    for col in key_columns:
+        if col in df.columns:
+            null_count = df.select(pl.col(col).is_null().sum()).item()
+            empty_count = df.select((pl.col(col).cast(pl.Utf8) == "").sum()).item()
+            total_missing = null_count + empty_count
+            
+            missing_data.append({
+                "column": col,
+                "null_count": null_count,
+                "empty_count": empty_count,
+                "total_missing": total_missing,
+                "missing_pct": round((total_missing / len(df)) * 100, 1) if len(df) > 0 else 0
+            })
+            missing_totals[f"{col}_missing"] = total_missing
+
+    total_missing_values = sum(missing_totals.values())
+    total_possible_values = len(df) * len(key_columns)
+    data_completeness_pct = round(((total_possible_values - total_missing_values) / total_possible_values) * 100, 1) if total_possible_values > 0 else 0
+
     schema = dg.TableSchema(columns=[
         dg.TableColumn(name="event_type", type="text"),
         dg.TableColumn(name="count", type="int"),
     ])
-    
-    return dg.MaterializeResult(
-        metadata={
-            "partition_date": dg.TimestampMetadataValue(
-                datetime.combine(partition_date, datetime.min.time()).timestamp()
-            ),
-            "records_inserted": inserted,
-            "source_file": f"s3://{bucket}/{key}",
-            "event_type_distribution": dg.TableMetadataValue(
-                records=[dg.TableRecord(r) for r in event_counts.to_dicts()],
-                schema=schema
-            ),
-            "missing_dates": dg.MetadataValue.json(
-                [d.isoformat() for d in missing]
-            ) if missing else dg.MetadataValue.text("No missing dates"),
-        }
-    )
+
+    missing_schema = dg.TableSchema(columns=[
+        dg.TableColumn(name="column", type="text"),
+        dg.TableColumn(name="null_count", type="int"),
+        dg.TableColumn(name="empty_count", type="int"),
+        dg.TableColumn(name="total_missing", type="int"),
+        dg.TableColumn(name="missing_pct", type="float"),
+    ])
+
+    metadata = {
+        "partition_date": dg.TimestampMetadataValue(
+            datetime.combine(partition_date, datetime.min.time()).timestamp()
+        ),
+        "records_inserted": inserted,
+        "event_type_distribution": dg.TableMetadataValue(
+            records=[dg.TableRecord(r) for r in event_counts.to_dicts()],
+            schema=schema
+        ),
+        "missing_data_breakdown": dg.TableMetadataValue(
+            records=[dg.TableRecord(r) for r in missing_data],
+            schema=missing_schema
+        ),
+        "missing_dates": dg.MetadataValue.json(
+            [d.isoformat() for d in missing]
+        ) if missing else dg.MetadataValue.text("No missing dates"),
+        # Plotted metrics for missing data
+        "total_missing_values": total_missing_values,
+        "data_completeness_pct": data_completeness_pct,
+    }
+
+    metadata.update(missing_totals)
+
+    return dg.MaterializeResult(metadata=metadata)
