@@ -1,10 +1,14 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import io
 import os
 
 import dagster as dg
 from dagster_aws.s3 import S3Resource
-from dagster_pipeline.dagster_acled.assets.base_assets import acled_request_daily
+from dagster_pipeline.dagster_acled.assets.base_assets import (
+    acled_daily_to_postgres,
+    acled_request_daily,
+)
+from dagster_pipeline.dagster_acled.resources.resources import PostgreSQLResource
 import polars as pl
 
 
@@ -20,7 +24,7 @@ async def _get_acled_dataframe(context: dg.AssetCheckExecutionContext, s3: S3Res
             raise ValueError(f"Could not parse partition date '{day_str}': {e}")
     
     bucket = os.environ['S3_BUCKET']
-    key = f"acled/daily_partitions/acled_{day}.parquet"
+    key = f"acled/acled_daily_data/partition_{day}.parquet"
     
     client = s3.get_client()
     response = client.get_object(Bucket=bucket, Key=key)
