@@ -37,6 +37,9 @@ ACLED API → Data Ingestion → S3 Storage → Data Validation → PostgreSQL �
   Sensors    Asset Checks              Real-time Monitoring
 ```
 
+<img width="1253" height="301" alt="image" src="https://github.com/user-attachments/assets/78cf3788-8931-4b72-b21b-6639933a7c78" />
+
+
 ## Core Components
 
 ### 1. **Real-Time Data Ingestion**
