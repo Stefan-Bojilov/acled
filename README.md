@@ -1,5 +1,18 @@
-# ACLED Data Platform
-*A Data & Machine Learning Pipeline for Conflict Event Analysis*
+
+<table>
+<tr>
+<td>
+
+<h1>ACLED Data Platform</h1>
+<p><em>A Data & Machine Learning Pipeline for Conflict Event Analysis</em></p>
+
+</td>
+<td>
+<img width="256" height="256" alt="image" src="https://github.com/user-attachments/assets/bba99ffc-c6ad-4714-b88e-28be3ef88bd7" />
+</td>
+</tr>
+</table>
+
 
 ## Overview
 
