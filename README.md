@@ -98,7 +98,10 @@ This project directly demonstrates capabilities relevant to modern data engineer
 ✅ **Robust Error Handling**: Graceful failure management with detailed logging  
 ✅ **Scalable Architecture**: Designed for production deployment and monitoring  
 
-## 🚀 Quick Start
+## Quick Start
+
+First, you will need to create an ACLED API key by following the instructions here https://acleddata.com/api-documentation/getting-started
+Secondly, you will need an AWS account with the aforementioned services. 
 
 ```bash
 # Install dependencies
