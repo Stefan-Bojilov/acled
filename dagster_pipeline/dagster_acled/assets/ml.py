@@ -22,30 +22,25 @@ import xgboost as xgb
 class ModelConfig(dg.Config):
     """Configuration for ACLED fatality prediction model."""
     
-    # Training parameters
-    training_days_back: int = 365  # How much historical data to use
+    training_days_back: int = 365 
     test_size: float = 0.2
     random_state: int = 42
     
-    # Model parameters
     n_trials_tuning: int = 50
     cv_folds: int = 5
     
-    # Prediction parameters
-    forecast_days_ahead: int = 30  # Forecast horizon
+    forecast_days_ahead: int = 30 
     
-    # Model versioning
     model_version: str = "v1"
-    retrain_threshold_days: int = 30  # Retrain if model older than this
+    retrain_threshold_days: int = 30  
 
 # ============================================================================
 # PREPROCESSING FUNCTIONS 
 # ============================================================================
 
-# Add this helper function at the top
 def safe_numeric(value):
     """Convert numpy types to native Python types"""
-    if hasattr(value, 'item'):  # numpy scalars have .item() method
+    if hasattr(value, 'item'):  
         return value.item()
     return float(value) if isinstance(value, (int, float)) else value
 
@@ -90,22 +85,18 @@ def prepare_features_for_model(df: pd.DataFrame, target_col: str = 'fatalities',
     target_encode_cols = ['admin2', 'admin3']
     
     if fit_encoders:
-        # Training phase - create encoders
         for col in target_encode_cols:
             encoded_col_name = f'{col}_target_encoded'
             df_encoded[encoded_col_name] = target_encode_cv(df_encoded, col, target_col)
             
-            # Store global mean for inference
             encoders[f'{col}_global_mean'] = df_encoded[target_col].mean()
             encoders[f'{col}_target_stats'] = df_encoded.groupby(col)[target_col].agg(['mean', 'count'])
     else:
-        # Inference phase - use existing encoders
         for col in target_encode_cols:
             encoded_col_name = f'{col}_target_encoded'
             target_stats = encoders[f'{col}_target_stats']
             global_mean = encoders[f'{col}_global_mean']
             
-            # Apply smoothing
             smoothing = 10
             target_stats_smoothed = (
                 (target_stats['count'] * target_stats['mean'] + smoothing * global_mean) /
@@ -115,8 +106,6 @@ def prepare_features_for_model(df: pd.DataFrame, target_col: str = 'fatalities',
             df_encoded[encoded_col_name] = df_encoded[col].map(target_stats_smoothed)
             df_encoded[encoded_col_name] = df_encoded[encoded_col_name].fillna(global_mean)
     
-    # Handle medium cardinality with target/label encoding
-    # High variance -> Target encoding
     high_variance_cols = ['actor1', 'actor2']
     for col in high_variance_cols:
         if fit_encoders:
@@ -136,7 +125,6 @@ def prepare_features_for_model(df: pd.DataFrame, target_col: str = 'fatalities',
             df_encoded[encoded_col_name] = df_encoded[col].map(target_stats_smoothed)
             df_encoded[encoded_col_name] = df_encoded[encoded_col_name].fillna(global_mean)
     
-    # Lower variance -> Label encoding
     lower_variance_cols = ['interaction', 'admin1']
     for col in lower_variance_cols:
         if fit_encoders:
@@ -147,12 +135,10 @@ def prepare_features_for_model(df: pd.DataFrame, target_col: str = 'fatalities',
         else:
             le = encoders[f'{col}_label_encoder']
             encoded_col_name = f'{col}_label_encoded'
-            # Handle unseen categories
             df_encoded[encoded_col_name] = df_encoded[col].astype(str).apply(
                 lambda x: le.transform([x])[0] if x in le.classes_ else -1
             )
     
-    # Geographic features
     if 'latitude' in df_encoded.columns and 'longitude' in df_encoded.columns:
         center_lat = df_encoded['latitude'].median()
         center_lon = df_encoded['longitude'].median()
@@ -162,12 +148,10 @@ def prepare_features_for_model(df: pd.DataFrame, target_col: str = 'fatalities',
             (df_encoded['longitude'] - center_lon)**2
         )
         
-        # Store center points for inference
         if fit_encoders:
             encoders['center_lat'] = center_lat
             encoders['center_lon'] = center_lon
     
-    # Remove original categorical columns
     original_categorical = [
         'disorder_type', 'event_type', 'sub_event_type', 'inter1', 'inter2',
         'admin2', 'admin3', 'actor1', 'actor2', 'interaction', 'admin1'
@@ -200,7 +184,6 @@ def acled_model_training_data(
     
     context.log.info(f"Extracting training data from {start_date} to {end_date}")
     
-    # Query to get all relevant features
     query = """
     SELECT 
         disorder_type,
@@ -233,7 +216,6 @@ def acled_model_training_data(
         df = pd.read_sql_query(query, conn, params=[start_date, end_date])
         context.log.info(f"Extracted {len(df)} records for training")
         
-        # Calculate detailed statistics for plotting
         fatality_stats = {
             'min_fatalities': int(df['fatalities'].min()),
             'max_fatalities': int(df['fatalities'].max()),
@@ -242,22 +224,18 @@ def acled_model_training_data(
             'std_fatalities': float(df['fatalities'].std()),
         }
         
-        # Event type distribution for table
         event_type_dist = df['event_type'].value_counts().head(10)
         event_type_table = [
             {"event_type": event_type, "count": int(count), "percentage": round(count/len(df)*100, 1)}
             for event_type, count in event_type_dist.items()
         ]
         
-        # Regional distribution
         regional_dist = df['admin1'].value_counts().head(15)
         
-        # Fatality distribution buckets for plotting
         fatality_buckets = pd.cut(df['fatalities'], bins=[0, 1, 5, 10, 25, 50, 100, float('inf')], 
                                  labels=['1', '2-5', '6-10', '11-25', '26-50', '51-100', '100+'])
         bucket_counts = fatality_buckets.value_counts().sort_index()
         
-        # Monthly trend data
         df['month'] = pd.to_datetime(df['event_date']).dt.to_period('M')
         monthly_stats = df.groupby('month').agg({
             'fatalities': ['count', 'sum', 'mean'],
@@ -267,7 +245,6 @@ def acled_model_training_data(
         monthly_stats = monthly_stats.reset_index()
         monthly_stats['month_str'] = monthly_stats['month'].astype(str)
         
-        # Convert monthly_stats to dict format that Dagster can handle
         monthly_records = []
         for _, row in monthly_stats.iterrows():
             monthly_records.append({
@@ -277,8 +254,7 @@ def acled_model_training_data(
                 "avg_fatalities": float(row['avg_fatalities']),
                 "unique_regions": int(row['unique_regions'])
             })
-        
-        # Data quality metrics
+
         missing_analysis = {}
         key_columns = ['disorder_type', 'event_type', 'actor1', 'actor2', 'admin1', 'admin2']
         for col in key_columns:
@@ -289,25 +265,20 @@ def acled_model_training_data(
                 missing_analysis[f'{col}_completeness_pct'] = float(round((1 - (null_count + empty_count)/len(df)) * 100, 1))
         
         context.add_output_metadata({
-            # Basic counts for plotting
             "training_records": len(df),
             "unique_regions": int(df['admin1'].nunique()),
             "unique_event_types": int(df['event_type'].nunique()),
             "unique_countries": int(df.get('country', pd.Series()).nunique()) if 'country' in df.columns else 0,
             
-            # Distribution metrics for plotting
             "high_fatality_events": int((df['fatalities'] >= 10).sum()),
             "moderate_fatality_events": int(((df['fatalities'] >= 5) & (df['fatalities'] < 10)).sum()),
             "low_fatality_events": int((df['fatalities'] < 5).sum()),
             
-            # Time series data for plotting
             "days_of_data": int((end_date - start_date).days),
             
-            # Data quality metrics for plotting
             **missing_analysis,
             "overall_data_quality": float(round(sum([v for k, v in missing_analysis.items() if k.endswith('_completeness_pct')]) / max(len([k for k in missing_analysis.keys() if k.endswith('_completeness_pct')]), 1), 1)),
             
-            # Tables
             "event_type_distribution": dg.TableMetadataValue(
                 records=[dg.TableRecord(r) for r in event_type_table],
                 schema=dg.TableSchema([
@@ -337,7 +308,6 @@ def acled_model_training_data(
                 ])
             ),
             
-            # Date range context
             "date_range_start": start_date.isoformat(),
             "date_range_end": end_date.isoformat(),
         })
@@ -363,22 +333,19 @@ def acled_trained_model(
     
     context.log.info("Starting model training and hyperparameter tuning")
     
-    # Prepare features
     df_processed, encoders = prepare_features_for_model(
         acled_model_training_data, 
         target_col='fatalities',
         fit_encoders=True
     )
     
-    # Remove any remaining non-numeric columns that shouldn't be features
-    columns_to_drop = ['event_date', 'month']  # Add other non-feature columns as needed
+    columns_to_drop = ['event_date', 'month']  
     columns_to_drop = [col for col in columns_to_drop if col in df_processed.columns]
     
     if columns_to_drop:
         context.log.info(f"Dropping non-feature columns: {columns_to_drop}")
         df_processed = df_processed.drop(columns=columns_to_drop)
-    
-    # Ensure all remaining columns (except target) are numeric
+
     non_numeric_cols = []
     for col in df_processed.columns:
         if col != 'fatalities' and not pd.api.types.is_numeric_dtype(df_processed[col]):
@@ -389,15 +356,13 @@ def acled_trained_model(
         context.log.warning(f"Column dtypes: {df_processed[non_numeric_cols].dtypes.to_dict()}")
         df_processed = df_processed.drop(columns=non_numeric_cols)
     
-    # Remove any remaining non-numeric columns that shouldn't be features
-    columns_to_drop = ['event_date', 'month']  # Add other non-feature columns as needed
+    columns_to_drop = ['event_date', 'month']  
     columns_to_drop = [col for col in columns_to_drop if col in df_processed.columns]
     
     if columns_to_drop:
         context.log.info(f"Dropping non-feature columns: {columns_to_drop}")
         df_processed = df_processed.drop(columns=columns_to_drop)
-    
-    # Ensure all remaining columns (except target) are numeric
+
     non_numeric_cols = []
     for col in df_processed.columns:
         if col != 'fatalities' and not pd.api.types.is_numeric_dtype(df_processed[col]):
@@ -407,11 +372,9 @@ def acled_trained_model(
         context.log.warning(f"Found non-numeric columns that will be dropped: {non_numeric_cols}")
         df_processed = df_processed.drop(columns=non_numeric_cols)
     
-    # Split features and target
     X = df_processed.drop(columns=['fatalities'])
     y = df_processed['fatalities']
     
-    # Train-test split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, 
         test_size=config.test_size, 
@@ -422,10 +385,8 @@ def acled_trained_model(
     context.log.info(f"Training set: {len(X_train)} samples, Test set: {len(X_test)} samples")
     context.log.info(f"Features: {X_train.shape[1]}")
     
-    # Record training start time
     training_start = datetime.now()
     
-    # Hyperparameter tuning with RandomizedSearchCV
     param_dist = {
         'n_estimators': [100, 200, 300, 500, 800],
         'max_depth': [3, 4, 5, 6, 7, 8],
@@ -455,7 +416,6 @@ def acled_trained_model(
         verbose=1
     )
     
-    # Fit model
     random_search.fit(X_train, y_train)
     best_model = random_search.best_estimator_
     
@@ -471,7 +431,6 @@ def acled_trained_model(
     test_r2 = r2_score(y_test, y_test_pred)
     train_r2 = r2_score(y_train, y_train_pred)
     
-    # Calculate prediction accuracy buckets for plotting
     test_errors = np.abs(y_test - y_test_pred)
     accuracy_buckets = {
         'perfect_predictions': int((test_errors == 0).sum()),
@@ -484,19 +443,16 @@ def acled_trained_model(
     context.log.info(f"Model performance - Train RMSE: {train_rmse:.3f}, Test RMSE: {test_rmse:.3f}")
     context.log.info(f"Test MAE: {test_mae:.3f}, Test R²: {test_r2:.3f}")
     
-    # Feature importance
     feature_importance = pd.DataFrame({
         'feature': X_train.columns,
         'importance': best_model.feature_importances_
     }).sort_values('importance', ascending=False)
     
-    # Cross-validation scores for plotting
     cv_scores = cross_val_score(best_model, X_train, y_train, 
                                cv=config.cv_folds, 
                                scoring='neg_root_mean_squared_error')
     cv_rmse_scores = -cv_scores
     
-    # Prepare model package
     model_package = {
         'model': best_model,
         'encoders': encoders,
@@ -605,7 +561,6 @@ def acled_fatality_predictions(
     
     context.log.info("Generating fatality predictions")
     
-    # Get recent data for prediction
     end_date = datetime.now().date()
     start_date = end_date - timedelta(days=config.forecast_days_ahead)
     
@@ -645,7 +600,6 @@ def acled_fatality_predictions(
         
         context.log.info(f"Making predictions for {len(recent_df)} recent events")
         
-        # Prepare features using trained encoders
         df_processed, _ = prepare_features_for_model(
             recent_df,
             target_col='fatalities',
@@ -664,14 +618,12 @@ def acled_fatality_predictions(
         
         X_pred = df_processed[training_features].copy()
         
-        # Ensure all features are numeric
         for col in X_pred.columns:
             if X_pred[col].dtype == 'object':
                 X_pred[col] = pd.to_numeric(X_pred[col], errors='coerce').fillna(0)
         
         predictions = model.predict(X_pred)
         
-        # Create results dataframe
         results_df = recent_df[['event_id_cnty', 'event_date', 'admin1', 'admin2', 
                                'event_type', 'fatalities']].copy()
         results_df['predicted_fatalities'] = predictions
@@ -680,19 +632,16 @@ def acled_fatality_predictions(
         results_df['percentage_error'] = np.where(results_df['fatalities'] > 0, 
                                                  results_df['absolute_error'] / results_df['fatalities'] * 100, 0)
         
-        # Calculate detailed accuracy metrics
         mae = results_df['absolute_error'].mean()
         rmse = np.sqrt((results_df['prediction_error'] ** 2).mean())
         mape = results_df['percentage_error'].mean()
         
-        # Prediction confidence buckets
         confidence_analysis = {
             'high_confidence_predictions': int((results_df['absolute_error'] <= 1).sum()),
             'medium_confidence_predictions': int(((results_df['absolute_error'] > 1) & (results_df['absolute_error'] <= 5)).sum()),
             'low_confidence_predictions': int((results_df['absolute_error'] > 5).sum()),
         }
         
-        # Regional performance analysis
         regional_performance = results_df.groupby('admin1').agg({
             'absolute_error': ['mean', 'count'],
             'predicted_fatalities': 'mean',
@@ -701,14 +650,12 @@ def acled_fatality_predictions(
         regional_performance.columns = ['avg_error', 'prediction_count', 'avg_predicted', 'avg_actual']
         regional_performance = regional_performance.reset_index().head(20)
         
-        # Event type performance
         event_type_performance = results_df.groupby('event_type').agg({
             'absolute_error': 'mean',
             'predicted_fatalities': 'mean',
             'fatalities': 'mean'
         }).round(2).reset_index()
         
-        # Risk level categorization for plotting
         def categorize_risk(fatalities):
             if fatalities >= 20: return 'Critical'
             elif fatalities >= 10: return 'High'
@@ -788,9 +735,6 @@ def acled_fatality_predictions(
         
     finally:
         conn.close()
-# ============================================================================
-# ENHANCED REPORTING WITH ML FORECASTS
-# ============================================================================
 
 
 @dg.asset(
@@ -822,9 +766,6 @@ def acled_monthly_report_with_ml(
     conn = postgres.get_connection()
     
     try:
-        # =============================================================================
-        # ALL ORIGINAL QUERIES
-        # =============================================================================
         
         quality_query = """
         SELECT 
@@ -889,7 +830,6 @@ def acled_monthly_report_with_ml(
         ORDER BY event_count DESC
         """
         
-        # NEW: ML-specific queries
         ml_performance_query = """
         SELECT 
             DATE_TRUNC('week', event_date) as week,
@@ -919,11 +859,6 @@ def acled_monthly_report_with_ml(
         LIMIT 20
         """
         
-        # =============================================================================
-        # EXECUTE ALL QUERIES
-        # =============================================================================
-        
-        # Original queries
         quality_df = pd.read_sql_query(quality_query, conn, params=[start_date, end_date])
         daily_df = pd.read_sql_query(daily_counts_query, conn, params=[start_date, end_date])
         events_df = pd.read_sql_query(event_types_query, conn, params=[start_date, end_date])
@@ -931,15 +866,10 @@ def acled_monthly_report_with_ml(
         actor_df = pd.read_sql_query(actor_query, conn, params=[start_date, end_date])
         ukraine_df = pd.read_sql_query(ukraine_region_query, conn, params=[start_date, end_date])
         
-        # New ML queries
         weekly_actuals = pd.read_sql_query(ml_performance_query, conn, params=[start_date, end_date])
         high_fatality_df = pd.read_sql_query(high_fatality_events_query, conn, params=[start_date, end_date])
         
-        # =============================================================================
-        # CALCULATE ALL METRICS
-        # =============================================================================
         
-        # Original metrics
         total_records = quality_df.iloc[0]['total_records']
         critical_missing = (quality_df.iloc[0]['missing_event_type'] + 
                            quality_df.iloc[0]['missing_country'] + 
@@ -956,7 +886,7 @@ def acled_monthly_report_with_ml(
         total_fatalities = daily_df['total_fatalities'].sum()
         avg_daily_events = daily_df['event_count'].mean()
         
-        # Ukraine metrics
+
         ukraine_total_events = ukraine_df['event_count'].sum() if len(ukraine_df) > 0 else 0
         ukraine_total_fatalities = ukraine_df['total_fatalities'].sum() if len(ukraine_df) > 0 else 0
         ukraine_regions_with_events = len(ukraine_df) if len(ukraine_df) > 0 else 0
@@ -967,21 +897,15 @@ def acled_monthly_report_with_ml(
         else:
             most_active_region = "N/A"
             most_active_count = 0
-        
-        # ML metrics
+
         model_metrics = acled_trained_model['performance_metrics']
         prediction_mae = acled_fatality_predictions['absolute_error'].mean() if len(acled_fatality_predictions) > 0 else 0
         prediction_rmse = np.sqrt((acled_fatality_predictions['prediction_error'] ** 2).mean()) if len(acled_fatality_predictions) > 0 else 0
         
-        # =============================================================================
-        # PDF GENERATION SETUP
-        # =============================================================================
         
-        # Create temporary file for the report
         with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
             temp_filepath = temp_file.name
         
-        # Set up professional styling
         plt.style.use('seaborn-v0_8-whitegrid')
         plt.rcParams.update({
             'font.family': 'sans-serif',
@@ -1000,7 +924,7 @@ def acled_monthly_report_with_ml(
             'ytick.color': '#333333',
         })
         
-        # Define professional color palette
+        # Color palette
         primary_color = '#2C3E50'
         secondary_color = '#3498DB'
         accent_color = '#E74C3C'
@@ -1009,27 +933,21 @@ def acled_monthly_report_with_ml(
         ml_color = '#9B59B6'
         text_color = '#34495E'
         darker_gray = '#BDC3C7'
-        
-        # Create temp directory for intermediate files
+
         with tempfile.TemporaryDirectory() as temp_dir:
             page1_path = os.path.join(temp_dir, 'page1.pdf')
             page2_path = os.path.join(temp_dir, 'page2.pdf')
             page3_path = os.path.join(temp_dir, 'page3_ml.pdf')
             
-            # =========================================================================
-            # PAGE 1: ORIGINAL DASHBOARD
-            # =========================================================================
             
             fig = plt.figure(figsize=(11, 8.5))
             fig.patch.set_facecolor('white')
 
             plt.subplots_adjust(hspace=0.3, wspace=0.3)
 
-            # Create header section with gradient effect
             header_ax = fig.add_axes([0, 0.92, 1, 0.08])
             header_ax.axis('off')
             
-            # Add gradient background for header
             gradient = np.linspace(0, 1, 256).reshape(1, -1)
             header_ax.imshow(gradient, extent=[0, 1, 0, 1], aspect='auto', 
                              cmap=plt.cm.Blues_r, alpha=0.15)
@@ -1039,10 +957,8 @@ def acled_monthly_report_with_ml(
             header_ax.text(0.98, 0.5, f'{start_date.strftime("%B %d")} – {end_date.strftime("%B %d, %Y")}', 
                           fontsize=11, va='center', ha='right', color=text_color)
             
-            # Add professional divider line
             header_ax.axhline(y=0.05, color=secondary_color, linewidth=3, alpha=0.8)
             
-            # Key Metrics Cards
             metrics_y = 0.78
             card_height = 0.10
             
@@ -1059,7 +975,6 @@ def acled_monthly_report_with_ml(
                 card_ax = fig.add_axes([x_pos, metrics_y, 0.21, card_height])
                 card_ax.axis('off')
                 
-                # Card with shadow effect
                 shadow = mpatches.FancyBboxPatch((0.02, 0.02), 0.96, 0.96,
                                                 boxstyle="round,pad=0.02",
                                                 facecolor='gray', alpha=0.1,
@@ -1073,19 +988,16 @@ def acled_monthly_report_with_ml(
                                               transform=card_ax.transAxes)
                 card_ax.add_patch(card)
                 
-                # Icon area (colored bar on left)
                 icon_bar = mpatches.Rectangle((0, 0), 0.03, 1,
                                              facecolor=color, alpha=0.8,
                                              transform=card_ax.transAxes)
                 card_ax.add_patch(icon_bar)
                 
-                # Value and label
                 card_ax.text(0.5, 0.62, value, fontsize=18, fontweight='bold',
                             ha='center', va='center', color=color)
                 card_ax.text(0.5, 0.28, label.upper(), fontsize=9, 
                             ha='center', va='center', color=text_color, alpha=0.7)
             
-            # Data Completeness Analysis (left upper)
             ax1 = fig.add_axes([0.05, 0.45, 0.42, 0.28])
             
             actor_completeness = {
@@ -1115,7 +1027,6 @@ def acled_monthly_report_with_ml(
             ax1.spines['left'].set_linewidth(0.5)
             ax1.spines['bottom'].set_linewidth(0.5)
             
-            # Daily Activity Trends (right upper)
             ax2 = fig.add_axes([0.52, 0.45, 0.43, 0.28])
             daily_df['event_date'] = pd.to_datetime(daily_df['event_date'])
             daily_df['rolling_avg'] = daily_df['event_count'].rolling(window=7, min_periods=1).mean()
@@ -1139,7 +1050,6 @@ def acled_monthly_report_with_ml(
             ax2.spines['left'].set_linewidth(0.5)
             ax2.spines['bottom'].set_linewidth(0.5)
             
-            # Event Classification (left lower)
             ax3 = fig.add_axes([0.05, 0.12, 0.42, 0.28])
             if len(events_df) > 0:
                 event_labels = []
@@ -1169,7 +1079,6 @@ def acled_monthly_report_with_ml(
             ax3.spines['left'].set_linewidth(0.5)
             ax3.spines['bottom'].set_linewidth(0.5)
             
-            # Geographic Distribution (right lower)
             ax4 = fig.add_axes([0.52, 0.12, 0.43, 0.28])
             region_df_top10 = region_df.head(10)
             if len(region_df_top10) > 0:
@@ -1197,7 +1106,6 @@ def acled_monthly_report_with_ml(
             ax4.spines['left'].set_linewidth(0.5)
             ax4.spines['bottom'].set_linewidth(0.5)
             
-            # Footer
             footer_ax = fig.add_axes([0, 0.02, 1, 0.04])
             footer_ax.axis('off')
             footer_ax.text(0.02, 0.5, f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M")} UTC', 
@@ -1210,14 +1118,10 @@ def acled_monthly_report_with_ml(
                        facecolor='white', edgecolor='none')
             plt.close()
             
-            # =========================================================================
-            # PAGE 2: UKRAINE REGIONAL ANALYSIS (ORIGINAL)
-            # =========================================================================
             
             fig2 = plt.figure(figsize=(11, 8.5))
             fig2.patch.set_facecolor('white')
             
-            # Header for page 2
             header_ax2 = fig2.add_axes([0, 0.92, 1, 0.08])
             header_ax2.axis('off')
             gradient2 = np.linspace(0, 1, 256).reshape(1, -1)
@@ -1229,7 +1133,6 @@ def acled_monthly_report_with_ml(
                            fontsize=11, va='center', ha='right', color=text_color)
             header_ax2.axhline(y=0.05, color=secondary_color, linewidth=3, alpha=0.8)
             
-            # Ukraine stats cards
             stats_y = 0.78
             stats_height = 0.10
             
@@ -1268,9 +1171,7 @@ def acled_monthly_report_with_ml(
                 card_ax.text(0.5, 0.28, label.upper(), fontsize=8, 
                             ha='center', va='center', color=text_color, alpha=0.7)
             
-            # Ukraine visualizations
             if len(ukraine_df) > 0:
-                # Left panel: Horizontal bar chart
                 ax_left = fig2.add_axes([0.05, 0.15, 0.44, 0.55])
                 ukraine_df_top = ukraine_df.head(15)
                 norm = plt.Normalize(vmin=ukraine_df_top['event_count'].min(), 
@@ -1297,7 +1198,6 @@ def acled_monthly_report_with_ml(
                 ax_left.spines['top'].set_visible(False)
                 ax_left.spines['right'].set_visible(False)
                 
-                # Right panel: Bubble chart
                 ax_right = fig2.add_axes([0.54, 0.15, 0.41, 0.55])
                 bubble_data = ukraine_df.head(20).copy()
                 
@@ -1345,7 +1245,6 @@ def acled_monthly_report_with_ml(
                               ha='center', va='center', fontsize=16, color=text_color)
                 no_data_ax.axis('off')
             
-            # Footer for page 2
             footer_ax2 = fig2.add_axes([0, 0.02, 1, 0.04])
             footer_ax2.axis('off')
             footer_ax2.text(0.02, 0.5, f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M")} UTC', 
@@ -1358,14 +1257,10 @@ def acled_monthly_report_with_ml(
                        facecolor='white', edgecolor='none')
             plt.close()
             
-            # =========================================================================
-            # PAGE 3: NEW ML FORECASTING AND INSIGHTS
-            # =========================================================================
             
             fig3 = plt.figure(figsize=(11, 8.5))
             fig3.patch.set_facecolor('white')
             
-            # Header for ML page
             header_ax3 = fig3.add_axes([0, 0.92, 1, 0.08])
             header_ax3.axis('off')
             gradient3 = np.linspace(0, 1, 256).reshape(1, -1)
