@@ -4,11 +4,11 @@ import os
 
 import dagster as dg
 from dagster_aws.s3 import S3Resource
-from dagster_pipeline.dagster_acled.assets.base_assets import (
+from dagster_acled.assets.base_assets import (
     acled_daily_to_postgres,
     acled_request_daily,
 )
-from dagster_pipeline.dagster_acled.resources.resources import PostgreSQLResource
+from dagster_acled.resources.resources import PostgreSQLResource
 import polars as pl
 
 

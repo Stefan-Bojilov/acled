@@ -1,6 +1,6 @@
 from dagster import ConfigurableResource
 from dagster_aws.s3 import S3Resource
-from dagster_pipeline.dagster_acled.secrets_config import SecretManager
+from dagster_acled.secrets_config import SecretManager
 import psycopg
 
 

@@ -4,8 +4,8 @@ import aiohttp
 import dagster as dg
 from dagster_acled.partitions import daily_partition
 from dagster_acled.utils import fetch_page
-from dagster_pipeline.dagster_acled.acled_request_config import AcledConfig
-from dagster_pipeline.dagster_acled.resources.resources import PostgreSQLResource
+from dagster_acled.acled_request_config import AcledConfig
+from dagster_acled.resources.resources import PostgreSQLResource
 import polars as pl
 
 

@@ -7,7 +7,6 @@ from typing import Dict, List, Any, Callable
 
 import dagster as dg
 from dagster_aws.s3 import S3Resource
-from dagster_acled.assets
 import polars as pl
 
 

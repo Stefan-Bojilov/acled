@@ -6,14 +6,14 @@ from dagster import (
     load_assets_from_modules,
     multiprocess_executor,
 )
-from dagster_pipeline.dagster_acled.asset_checks import acled_checks
-from dagster_pipeline.dagster_acled.assets import base_assets, ml, report
-from dagster_pipeline.dagster_acled.resources.io_manager import (
+from dagster_acled.asset_checks import acled_checks
+from dagster_acled.assets import base_assets, ml, report
+from dagster_acled.resources.io_manager import (
     reports_s3_io_manager,
     s3_io_manager,
     s3_pickle_io_manager,
 )
-from dagster_pipeline.dagster_acled.resources.resources import ResourceConfig
+from dagster_acled.resources.resources import ResourceConfig
 from dotenv import load_dotenv
 
 from dagster_acled.jobs import acled_update_job

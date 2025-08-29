@@ -1,0 +1,115 @@
+local_artifact_storage:
+  module: dagster.core.storage.root
+  class: LocalArtifactStorage
+  config:
+    base_dir: '/path/to/dir'
+
+compute_logs:
+  module: dagster.core.storage.local_compute_log_manager
+  class: LocalComputeLogManager
+  config:
+    base_dir: /path/to/compute/logs
+
+
+storage:
+  postgres:
+    postgres_db:
+      hostname: localhost
+      username: dagster
+      password: dagster
+      db_name: dagster
+      port: 5432
+
+run_queue:
+  max_concurrent_runs: 15
+  tag_concurrency_limits:
+    - key: 'database'
+      value: 'redshift'
+      limit: 4
+    - key: 'dagster/backfill'
+      limit: 10
+
+run_storage:
+  module: dagster.core.storage.runs
+  class: SqliteRunStorage
+  config:
+    base_dir: /path/to/dagster/home/history
+
+event_log_storage:
+  module: dagster.core.storage.event_log
+  class: SqliteEventLogStorage
+  config:
+    base_dir: /path/to/dagster/home/history
+
+schedule_storage:
+  module: dagster.core.storage.schedules
+  class: SqliteScheduleStorage
+  config:
+    base_dir: /path/to/dagster/home/schedules
+
+scheduler:
+  module: dagster.core.scheduler
+  class: DagsterDaemonScheduler
+
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: DefaultRunCoordinator
+
+
+run_launcher:
+  module: dagster.core.launcher
+  class: DefaultRunLauncher
+
+telemetry:
+  enabled: true
+
+nux:
+  enabled: true
+
+run_monitoring:
+  enabled: true
+  poll_interval_seconds: 60
+
+run_retries:
+  enabled: true
+  max_retries: 3
+  retry_on_asset_or_op_failure: true
+
+code_servers:
+  local_startup_timeout: 360
+
+secrets:
+  my_secret:
+    env: MY_SECRET_ENV_VAR
+
+retention:
+  schedule:
+    purge_after_days: 90
+  sensor:
+    purge_after_days:
+      skipped: 7
+      failure: 30
+      success: -1
+
+sensors:
+  use_threads: true
+  num_workers: 8
+
+schedules:
+  use_threads: true
+  num_workers: 8
+
+backfills:
+  use_threads: true
+  num_workers: 8
+
+auto_materialize:
+  enabled: true
+  minimum_interval_seconds: 3600
+  run_tags:
+    key: 'value'
+  respect_materialization_data_versions: true
+  max_tick_retries: 3
+  use_sensors: false
+  use_threads: false
+  num_workers: 4

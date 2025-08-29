@@ -1,0 +1,4 @@
+load_from:
+  - python_package:
+      package_name: dagster_acled
+      working_directory: /opt/dagster/app/dagster_pipeline
