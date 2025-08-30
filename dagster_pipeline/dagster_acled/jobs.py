@@ -12,7 +12,7 @@ acled_update_job = dg.define_asset_job(
 
 acled_report_job = dg.define_asset_job(
     name="acled_report_job",
-    selection=dg.AssetSelection.groups("acled_reports"),
+    selection=dg.AssetSelection.groups("machine_learning", "acled_reports"),
     partitions_def=daily_partition 
 )
 

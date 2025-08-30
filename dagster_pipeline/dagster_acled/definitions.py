@@ -6,17 +6,18 @@ from dagster import (
     load_assets_from_modules,
     multiprocess_executor,
 )
+from dotenv import load_dotenv
+
 from dagster_acled.asset_checks import acled_checks
 from dagster_acled.assets import base_assets, ml, report
+from dagster_acled.jobs import acled_update_job
 from dagster_acled.resources.io_manager import (
     reports_s3_io_manager,
     s3_io_manager,
     s3_pickle_io_manager,
 )
 from dagster_acled.resources.resources import ResourceConfig
-from dotenv import load_dotenv
-
-from dagster_acled.jobs import acled_update_job
+from dagster_acled.schedules import daily_schedule
 from dagster_acled.secrets_config import SecretManager
 from dagster_acled.sensors import acled_sensor
 
@@ -44,5 +45,6 @@ defs = Definitions(
     resources=resources,
     jobs = all_jobs,
     sensors=all_sensors, 
+    schedules=[daily_schedule],
     executor=multiprocess_executor_def
 )

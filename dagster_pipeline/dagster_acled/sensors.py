@@ -11,7 +11,7 @@ from dagster_acled.utils import fetch_page
 
 @dg.sensor(
     job=acled_update_job,
-    minimum_interval_seconds=15,  
+    minimum_interval_seconds=172800,  
     description="Monitor ACLED API for new data and trigger backfill runs", 
 )
 def acled_sensor(context: dg.SensorEvaluationContext) -> list[dg.RunRequest]:
