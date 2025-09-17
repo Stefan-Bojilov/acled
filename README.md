@@ -1,19 +1,4 @@
 
-<table>
-<tr>
-<td>
-
-<h1>ACLED Data Platform</h1>
-<p><em>A Data & Machine Learning Pipeline for Conflict Event Analysis</em></p>
-
-</td>
-<td>
-<img width="256" height="256" alt="image" src="https://github.com/user-attachments/assets/bba99ffc-c6ad-4714-b88e-28be3ef88bd7" />
-</td>
-</tr>
-</table>
-
-
 ## Overview
 
 This project demonstrates a complete **real-time data pipeline** built with Dagster, designed to fetch, process, validate, and analyze conflict event data from the ACLED (Armed Conflict Location & Event Data Project) API. The system showcases end-to-end data engineering capabilities from ingestion to machine learning-powered insights.
