@@ -4,8 +4,10 @@ import boto3
 import dagster as dg
 import polars as pl
 from pathlib import Path
+import yaml
 
 from dagster_aws.s3 import S3PickleIOManager, S3Resource
+from dagster_acled.resources.resources import load_resource_config
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,7 +23,6 @@ class S3IOManager(dg.IOManager):
     def client(self):
         """Lazy-load S3 client"""
         if self._client is None:
-            # Create client with the S3 config
             self._client = boto3.client('s3', **self.s3_config)
         return self._client
 
@@ -32,14 +33,36 @@ class S3IOManager(dg.IOManager):
             return f"{self.prefix}/{asset_key}/partition_{partition}.parquet"
         return f"{self.prefix}/{asset_key}.parquet"
 
+    def _cast_to_proper_types(self, df: pl.DataFrame) -> pl.DataFrame:
+        """
+        Cast DataFrame columns to proper types before storing in S3.
+        This ensures efficient storage and correct querying later.
+        """
+        return df.with_columns([
+            pl.col("event_date").str.strptime(pl.Date, "%Y-%m-%d", strict=False),
+            
+            pl.col("year").cast(pl.Int16, strict=False),
+            pl.col("time_precision").cast(pl.Int16, strict=False),
+            pl.col("iso").cast(pl.Int16, strict=False),
+            pl.col("geo_precision").cast(pl.Int16, strict=False),
+            pl.col("fatalities").cast(pl.Int16, strict=False),
+            
+            pl.col("latitude").cast(pl.Float64, strict=False),
+            pl.col("longitude").cast(pl.Float64, strict=False),
+            pl.col("timestamp").cast(pl.Int64).cast(pl.Datetime("ms"), strict=False),
+        ])
+
     def handle_output(self, context: dg.AssetExecutionContext, obj: pl.DataFrame):
-        """Store DataFrame as Parquet in S3"""
-        # Serialize DataFrame to Parquet
+        """Store DataFrame as Parquet in S3 with proper types"""
+        
+        df_typed = self._cast_to_proper_types(obj)
+        
+        context.log.info(f"Schema after type casting: {df_typed.schema}")
+        
         buf = io.BytesIO()
-        obj.write_parquet(buf)
+        df_typed.write_parquet(buf)
         buf.seek(0)
 
-        # Upload to S3
         path = self._get_path(context)
 
         try:
@@ -48,7 +71,9 @@ class S3IOManager(dg.IOManager):
                 Key=path,
                 Body=buf.read()
             )
-            context.log.info(f"Stored DataFrame with {len(obj)} rows to s3://{self.bucket}/{path}")
+            context.log.info(f"Stored DataFrame with {len(df_typed)} rows to s3://{self.bucket}/{path}")
+            context.log.info(f"Columns: {list(df_typed.columns)}")
+            context.log.info(f"Memory size: {df_typed.estimated_size() / 1024 / 1024:.2f} MB")
         except Exception as e:
             context.log.error(f"Failed to upload to S3: {str(e)}")
             raise
@@ -67,6 +92,7 @@ class S3IOManager(dg.IOManager):
             df = pl.read_parquet(buf)
 
             context.log.info(f"Loaded DataFrame with {len(df)} rows from s3://{self.bucket}/{path}")
+            context.log.info(f"Schema: {df.schema}")
             return df
 
         except self.client.exceptions.NoSuchKey:
@@ -75,25 +101,27 @@ class S3IOManager(dg.IOManager):
             raise RuntimeError(f"Failed to load data from s3://{self.bucket}/{path}: {str(e)}")
 
 
-@dg.io_manager()  # No required_resource_keys
+@dg.io_manager()  
 def s3_io_manager(context) -> S3IOManager:
-    """Create S3 IO Manager instance using environment variables"""
-    
-    # Get S3 config from environment variables
-    s3_config = {}
+    """Create S3 IO Manager instance using resource_config.yaml"""
+    config = load_resource_config()
+    s3_conf = {}
     if 'AWS_ACCESS_KEY_ID' in os.environ:
-        s3_config['aws_access_key_id'] = os.environ['AWS_ACCESS_KEY_ID']
+        s3_conf['aws_access_key_id'] = os.environ['AWS_ACCESS_KEY_ID']
     if 'AWS_SECRET_ACCESS_KEY' in os.environ:
-        s3_config['aws_secret_access_key'] = os.environ['AWS_SECRET_ACCESS_KEY']
+        s3_conf['aws_secret_access_key'] = os.environ['AWS_SECRET_ACCESS_KEY']
     if 'AWS_REGION' in os.environ:
-        s3_config['region_name'] = os.environ['AWS_REGION']
+        s3_conf['region_name'] = os.environ['AWS_REGION']
     elif 'REGION_NAME' in os.environ:
-        s3_config['region_name'] = os.environ['REGION_NAME']
-    
+        s3_conf['region_name'] = os.environ['REGION_NAME']
+
+    bucket = config['s3']['bucket_name']
+    prefix = config['s3']['data_prefix']
+
     return S3IOManager(
-        bucket=os.environ['S3_BUCKET'],
-        prefix="acled",
-        **s3_config
+        bucket=bucket,
+        prefix=prefix,
+        **s3_conf
     )
 
 class ReportsS3IOManager(dg.IOManager):
@@ -195,38 +223,46 @@ class ReportsS3IOManager(dg.IOManager):
 
 @dg.io_manager()
 def reports_s3_io_manager(context) -> ReportsS3IOManager:
-    """Create Reports S3 IO Manager instance"""
-    s3_config = {}
+    """Create Reports S3 IO Manager instance using resource_config.yaml"""
+    config = load_resource_config()
+    s3_conf = {}
     if 'AWS_ACCESS_KEY_ID' in os.environ:
-        s3_config['aws_access_key_id'] = os.environ['AWS_ACCESS_KEY_ID']
+        s3_conf['aws_access_key_id'] = os.environ['AWS_ACCESS_KEY_ID']
     if 'AWS_SECRET_ACCESS_KEY' in os.environ:
-        s3_config['aws_secret_access_key'] = os.environ['AWS_SECRET_ACCESS_KEY']
+        s3_conf['aws_secret_access_key'] = os.environ['AWS_SECRET_ACCESS_KEY']
     if 'AWS_REGION' in os.environ:
-        s3_config['region_name'] = os.environ['AWS_REGION']
+        s3_conf['region_name'] = os.environ['AWS_REGION']
     elif 'REGION_NAME' in os.environ:
-        s3_config['region_name'] = os.environ['REGION_NAME']
-    
+        s3_conf['region_name'] = os.environ['REGION_NAME']
+
+    bucket = config['s3']['bucket_name']
+    reports_prefix = config['s3']['reports_prefix']
+
     return ReportsS3IOManager(
-        bucket=os.environ['S3_BUCKET'],
-        reports_prefix="acled/reports",
-        **s3_config
+        bucket=bucket,
+        reports_prefix=reports_prefix,
+        **s3_conf
     )
 
 
 @dg.io_manager()
 def s3_pickle_io_manager(context) -> S3PickleIOManager: 
-    s3_config = {}
+    config = load_resource_config()
+    s3_conf = {}
     if 'AWS_ACCESS_KEY_ID' in os.environ:
-        s3_config['aws_access_key_id'] = os.environ['AWS_ACCESS_KEY_ID']
+        s3_conf['aws_access_key_id'] = os.environ['AWS_ACCESS_KEY_ID']
     if 'AWS_SECRET_ACCESS_KEY' in os.environ:
-        s3_config['aws_secret_access_key'] = os.environ['AWS_SECRET_ACCESS_KEY']
+        s3_conf['aws_secret_access_key'] = os.environ['AWS_SECRET_ACCESS_KEY']
     if 'AWS_REGION' in os.environ:
-        s3_config['region_name'] = os.environ['AWS_REGION']
+        s3_conf['region_name'] = os.environ['AWS_REGION']
     elif 'REGION_NAME' in os.environ:
-        s3_config['region_name'] = os.environ['REGION_NAME']
-    
+        s3_conf['region_name'] = os.environ['REGION_NAME']
+
+    bucket = config['s3']['bucket_name']
+    models_prefix = config['s3']['models_prefix']
+
     return S3PickleIOManager(
-        s3_resource=S3Resource(**s3_config),
-        s3_bucket=os.environ['S3_BUCKET'],
-        s3_prefix="acled/models"
+        s3_resource=S3Resource(**s3_conf),
+        s3_bucket=bucket,
+        s3_prefix=models_prefix
     )

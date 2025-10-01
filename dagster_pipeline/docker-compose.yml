@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  dagster:
+    build: .
+    image: acled:latest
+    container_name: dagster-acled
+    ports:
+      - "3000:3000"
+    volumes:
+      - ~/.aws:/root/.aws:ro
+    environment:
+      - REGION_NAME=${REGION_NAME:-eu-north-1}
+    restart: unless-stopped

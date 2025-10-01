@@ -4,8 +4,8 @@ import tempfile
 from pathlib import Path
 
 import dagster as dg
-from dagster_pipeline.dagster_acled.resources.resources import PostgreSQLResource
-from dagster_pipeline.dagster_acled.assets.base_assets import acled_daily_to_postgres
+from dagster_acled.resources.resources import PostgreSQLResource
+from dagster_acled.assets.base_assets import acled_daily_to_postgres
 import matplotlib.dates as mdates
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt

@@ -1,0 +1,9 @@
+s3:
+  bucket_name: "dagster-acled-bucket"
+  data_prefix: "acled/acled_daily_data"
+  reports_prefix: "acled/reports"
+  models_prefix: "acled/models"
+
+postgres:
+  table_name: "acled_events_no_delete"
+  schema: "public"
