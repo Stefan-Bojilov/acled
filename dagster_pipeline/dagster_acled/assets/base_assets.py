@@ -8,7 +8,6 @@ from dagster_acled.acled_request_config import AcledConfig
 from dagster_acled.resources.resources import PostgreSQLResource
 import polars as pl
 
-
 @dg.asset(
     name="acled_daily_data", 
     partitions_def=daily_partition,
@@ -30,9 +29,13 @@ async def acled_request_daily(
     all_rows = []
     page = 1
     
+    # Get OAuth authentication parameters and headers
+    base_params, headers = await config.build_params()
+    
     async with aiohttp.ClientSession() as session:
         while True:
-            params = config.build_params()
+            # Start with base params and add pagination/date filters
+            params = base_params.copy()
             params.update({
                 "limit": config.max_pages,
                 "page": page,
@@ -40,8 +43,10 @@ async def acled_request_daily(
                 "event_date_where": "=",
             })
             
-            chunk = await fetch_page(session, url, params)
+            # Pass headers to fetch_page function
+            chunk = await fetch_page(session, url, params, headers=headers)
             if not chunk:
+                context.log.warning(f'Maximum limit of {config.max_pages} pages requests exceeded!')
                 break
             
             all_rows.extend(chunk)
@@ -151,7 +156,7 @@ async def acled_daily_to_postgres(
         missing = [partition_date]
 
     conn = postgres.get_connection()
-    table = "acled_events_no_delete"
+    table = f"{postgres.schema}.{postgres.table_name}"
     
     create_sql = f"""
         CREATE TABLE IF NOT EXISTS {table} (

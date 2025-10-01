@@ -29,7 +29,7 @@ class ModelConfig(dg.Config):
     n_trials_tuning: int = 50
     cv_folds: int = 5
     
-    forecast_days_ahead: int = 30 
+    forecast_days_ahead: int = 7 
     
     model_version: str = "v1"
     retrain_threshold_days: int = 30  
@@ -184,7 +184,7 @@ def acled_model_training_data(
     
     context.log.info(f"Extracting training data from {start_date} to {end_date}")
     
-    query = """
+    query = f"""
     SELECT 
         disorder_type,
         event_type,
@@ -201,7 +201,7 @@ def acled_model_training_data(
         longitude,
         fatalities,
         event_date
-    FROM acled_events_no_delete 
+    FROM {postgres.table_name} 
     WHERE event_date >= %s 
         AND event_date <= %s
         AND fatalities IS NOT NULL
@@ -561,10 +561,43 @@ def acled_fatality_predictions(
     
     context.log.info("Generating fatality predictions")
     
-    end_date = datetime.now().date()
-    start_date = end_date - timedelta(days=config.forecast_days_ahead)
+    # FIXED: First check what data is actually available
+    conn = postgres.get_connection()
+    # Check available date range in database
+    date_check_query = """
+    SELECT 
+        MIN(event_date) as earliest_date,
+        MAX(event_date) as latest_date,
+        COUNT(*) as total_records
+    FROM acled_events_no_delete 
+    WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+    """
     
-    query = """
+    date_info = pd.read_sql_query(date_check_query, conn)
+    earliest_date = date_info.iloc[0]['earliest_date']
+    latest_date = date_info.iloc[0]['latest_date']
+    total_records = date_info.iloc[0]['total_records']
+    
+    context.log.info(f"Available data range: {earliest_date} to {latest_date} ({total_records:,} records)")
+    
+    if latest_date is None:
+        context.log.error("No data found in database")
+        return pd.DataFrame()
+    
+    end_date = min(datetime.now().date(), latest_date)
+    start_date = max(
+        end_date - timedelta(days=config.forecast_days_ahead),
+        earliest_date
+    )
+    
+    # If still no overlap, use the most recent available data
+    if start_date > end_date:
+        end_date = latest_date
+        start_date = latest_date - timedelta(days=min(7, config.forecast_days_ahead))  # At least try last week
+    
+    context.log.info(f"Using adjusted date range: {start_date} to {end_date}")
+    
+    query = f"""
     SELECT 
         event_id_cnty,
         event_date,
@@ -582,7 +615,7 @@ def acled_fatality_predictions(
         latitude,
         longitude,
         fatalities
-    FROM acled_events_no_delete 
+    FROM {postgres.table_name} 
     WHERE event_date >= %s 
         AND event_date <= %s
         AND latitude IS NOT NULL 
@@ -748,7 +781,7 @@ def acled_monthly_report_with_ml(
     context: dg.AssetExecutionContext,
     config: ReportConfig,
     postgres: PostgreSQLResource,
-    acled_trained_model: Dict[str, Any],
+    acled_trained_model: dict[str, Any],
     acled_fatality_predictions: pd.DataFrame,
 ) -> str:
     """Generate enhanced monthly ACLED report with ML forecasting insights as a 3-page PDF."""

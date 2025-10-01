@@ -34,6 +34,7 @@ dependencies = [
     "pypdf2>=3.0.1",
     "pygal-maps-ua>=1.0.2",
     "xgboost>=2.1.4",
+    "pyarrow>=21.0.0",
 ]
 
 [project.optional-dependencies]
