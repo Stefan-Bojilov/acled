@@ -14,7 +14,7 @@ module "ecs_service" {
     "${each.key}" = merge(
       {
         name      = each.key
-        cpu       = 512
+        cpu       = 1024
         memory    = 1024
         essential = true
         image     = each.value.name
