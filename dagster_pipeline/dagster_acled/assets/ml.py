@@ -22,7 +22,7 @@ import xgboost as xgb
 class ModelConfig(dg.Config):
     """Configuration for ACLED fatality prediction model."""
     
-    training_days_back: int = 365 
+    training_days_back: int = 60
     test_size: float = 0.2
     random_state: int = 42
     
@@ -233,7 +233,7 @@ def acled_model_training_data(
         regional_dist = df['admin1'].value_counts().head(15)
         
         fatality_buckets = pd.cut(df['fatalities'], bins=[0, 1, 5, 10, 25, 50, 100, float('inf')], 
-                                 labels=['1', '2-5', '6-10', '11-25', '26-50', '51-100', '100+'])
+                            labels=['1', '2-5', '6-10', '11-25', '26-50', '51-100', '100+'])
         bucket_counts = fatality_buckets.value_counts().sort_index()
         
         df['month'] = pd.to_datetime(df['event_date']).dt.to_period('M')
@@ -561,8 +561,8 @@ def acled_fatality_predictions(
     
     context.log.info("Generating fatality predictions")
     
-    # FIXED: First check what data is actually available
     conn = postgres.get_connection()
+
     # Check available date range in database
     date_check_query = """
     SELECT 
@@ -590,11 +590,7 @@ def acled_fatality_predictions(
         earliest_date
     )
     
-    # If still no overlap, use the most recent available data
-    if start_date > end_date:
-        end_date = latest_date
-        start_date = latest_date - timedelta(days=min(7, config.forecast_days_ahead))  # At least try last week
-    
+
     context.log.info(f"Using adjusted date range: {start_date} to {end_date}")
     
     query = f"""
@@ -622,8 +618,7 @@ def acled_fatality_predictions(
         AND longitude IS NOT NULL
     ORDER BY event_date
     """
-    
-    conn = postgres.get_connection()
+
     try:
         recent_df = pd.read_sql_query(query, conn, params=[start_date, end_date])
         

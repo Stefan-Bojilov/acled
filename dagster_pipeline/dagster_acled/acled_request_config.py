@@ -368,7 +368,7 @@ class AcledConfig(AcledClientConfig):
     civilian_targeting: Optional[str] = Field(default=None, description="Filter on civilian_targeting (LIKE)")
     civilian_targeting_where: Optional[str] = Field(default=None, description="Override operator for civilian_targeting filter")
 
-    iso: Optional[str] = Field(default="804", description="Filter on iso (equals)")
+    iso: Optional[str] = Field(default=None, description="Filter on iso (equals)")
     iso_where: Optional[str] = Field(default=None, description="Override operator for iso filter")
 
     region: Optional[int] = Field(default=None, description="Filter on region (equals)")
@@ -418,6 +418,7 @@ class AcledConfig(AcledClientConfig):
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
+        frozen=False
     )
 
     

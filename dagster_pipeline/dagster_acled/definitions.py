@@ -9,7 +9,7 @@ from dagster import (
 from dotenv import load_dotenv
 
 from dagster_acled.asset_checks import acled_checks
-from dagster_acled.assets import base_assets, ml, report
+from dagster_acled.assets import base_assets, ml, report, country_assets
 from dagster_acled.jobs import acled_update_job
 from dagster_acled.resources.io_manager import (
     reports_s3_io_manager,
@@ -35,12 +35,12 @@ resources = {
 }
 
 all_jobs = [acled_update_job]
-all_assets = load_assets_from_modules([base_assets, report, ml])
+all_assets = load_assets_from_modules([base_assets, report, ml, country_assets])
 all_asset_checks = load_asset_checks_from_modules([acled_checks])
 all_sensors = [acled_sensor, s3_data_availability_sensor]
 
 multiprocess_executor_def = multiprocess_executor.configured({
-    "max_concurrent": 4,
+    "max_concurrent": 4,    
 })
 
 defs = Definitions(
