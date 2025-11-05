@@ -7,6 +7,6 @@ weekly_partition = WeeklyPartitionsDefinition(
     )
 
 daily_partition = DailyPartitionsDefinition(
-    start_date="2024-12-30",
+    start_date="2015-12-30",
 )
 

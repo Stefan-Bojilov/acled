@@ -7,12 +7,10 @@ requires-python = ">=3.9,<3.13"
 dependencies = [
     "dagster",
     "dagster-cloud",
-    "dagster-duckdb>=0.26.20",
     "dagster-webserver>=1.10.20",
     "aiohttp>=3.12.13",
     "aws-advanced-python-wrapper>=1.2.0",
     "boto3>=1.39.1",
-    "dagster-duckdb>=0.27.1",
     "dagster-webserver>=1.10.20",
     "ipython",
     "jupyterlab",
@@ -35,6 +33,14 @@ dependencies = [
     "pygal-maps-ua>=1.0.2",
     "xgboost>=2.1.4",
     "pyarrow>=21.0.0",
+    "azure-storage-blob>=12.26.0",
+    "azure-keyvault-secrets>=4.10.0",
+    "azure-mgmt-storage>=23.1.0",
+    "azure-identity>=1.25.1",
+    "dagster-azure>=0.27.13",
+    "dagster-uc>=0.5.6",
+    "dagster-k8s>=0.27.13",
+    "dagster-postgres>=0.27.13",
 ]
 
 [project.optional-dependencies]
