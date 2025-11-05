@@ -5,19 +5,22 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
 from dagster_acled.secrets_config import SecretManager
+from dagster_acled.resources.resources import load_resource_config
 from dagster import Config
 from pydantic import Field, BaseModel, field_serializer, field_validator, ConfigDict, computed_field
 from typing import Any
 
 load_dotenv()
 
+keyvault_config = load_resource_config()
+
 class TokenData(BaseModel):
     """Model for OAuth token response data."""
     access_token: str
-    refresh_token: Optional[str] = None
+    refresh_token: str | None = None
     token_type: str = "Bearer"
     expires_in: int = Field(default=86400, description="Token expiration time in seconds")
-    expires_at: Optional[datetime] = Field(default=None, description="Calculated expiration timestamp")
+    expires_at: datetime | None = Field(default=None, description="Calculated expiration timestamp")
     
     @field_serializer('expires_at')
     def serialize_expires_at(self, expires_at: Optional[datetime]) -> Optional[str]:
@@ -36,7 +39,7 @@ class TokenData(BaseModel):
     
     @property
     def is_expired(self) -> bool:
-        """Check if the token is expired (with 5-minute buffer)."""
+        """Check if the token is expired."""
         if not self.expires_at:
             return True
         
@@ -52,11 +55,11 @@ class TokenData(BaseModel):
 
 
 class OAuthTokenManager(BaseModel):
-    """Manages OAuth tokens for ACLED API authentication using Pydantic."""
+    """Manages OAuth tokens for ACLED API authentication."""
     
     username: str | None = Field(default=None, description="Username (email) for OAuth authentication")
     password: str | None = Field(default=None, description="Password for OAuth authentication")
-    base_url: str = Field(default="https://acleddata.com", description="Base URL for OAuth endpoints")
+    base_url: str = Field(default="https://acleddata.com", description="Base URL for ACLED endpoints")
     
     # Token storage - store the complete token data
     current_token: TokenData | None = Field(default=None, description="Current token data")
@@ -91,11 +94,11 @@ class OAuthTokenManager(BaseModel):
     def _load_credentials_from_secrets(self) -> None:
         """Load credentials from AWS Secrets Manager."""
         if not self.username or not self.password:
-            sm = SecretManager(region_name=os.environ['REGION_NAME'])
-            credentials = sm.get_secret('ACLED-API')
+            sm = SecretManager(vault_url=keyvault_config['keyvault']['url'],region_name=None)
+            credentials = sm.get_secret('acled-credentials', source = 'az')
         if credentials:
-            self.username = credentials.get('username')
-            self.password = credentials.get('password')
+            self.username = credentials['username']
+            self.password = credentials['password']
 
     def __repr__(self) -> str:
         """Safe representation that doesn't expose password."""
@@ -145,14 +148,13 @@ class OAuthTokenManager(BaseModel):
         if self.is_token_valid:
             return self.access_token
         
-        # Try to refresh token if we have a refresh token
+        # Ty to rrefresh token if we have a refresh token
         if self.refresh_token:
             try:
                 await self._refresh_access_token()
                 if self.is_token_valid:
                     return self.access_token
             except Exception as e:
-                # If refresh fails, we'll get a new token below
                 pass
         
         # Get new token
@@ -165,7 +167,6 @@ class OAuthTokenManager(BaseModel):
     
     async def _get_new_token(self) -> None:
         """Request a new access token using username/password."""
-        # Use multipart/form-data as specified in the API docs
         data = aiohttp.FormData()
         data.add_field('username', self.username)
         data.add_field('password', self.password)
@@ -184,7 +185,6 @@ class OAuthTokenManager(BaseModel):
                     )
                 
                 token_data = await response.json()
-                # TokenData will automatically calculate expires_at when created
                 self.current_token = TokenData(**token_data)
     
     async def _refresh_access_token(self) -> None:

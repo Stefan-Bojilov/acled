@@ -7,3 +7,11 @@ s3:
 postgres:
   table_name: "acled_events_no_delete"
   schema: "public"
+
+storage_account: 
+  name: "acledbucket"
+  url: "https://acledbucket.blob.core.windows.net/"
+  container: "acled-container"
+
+keyvault:
+  url: "https://acled-keys.vault.azure.net/"

@@ -2,53 +2,37 @@ import os
 
 from dagster import (
     Definitions,
-    load_asset_checks_from_modules,
     load_assets_from_modules,
     multiprocess_executor,
 )
+from dagster_azure.blob import AzureBlobStorageDefaultCredential, AzureBlobStorageResource
 from dotenv import load_dotenv
 
-from dagster_acled.asset_checks import acled_checks
-from dagster_acled.assets import base_assets, ml, report, country_assets
+from dagster_acled.assets import azure_asset
 from dagster_acled.jobs import acled_update_job
-from dagster_acled.resources.io_manager import (
-    reports_s3_io_manager,
-    s3_io_manager,
-    s3_pickle_io_manager,
-)
-from dagster_acled.resources.resources import ResourceConfig
-from dagster_acled.schedules import daily_schedule
-from dagster_acled.secrets_config import SecretManager
-from dagster_acled.sensors import acled_sensor, s3_data_availability_sensor
+from dagster_acled.resources.resources import  load_resource_config
+from dagster_acled.sensors import acled_sensor
 
 load_dotenv()
 
-sm = SecretManager(region_name=os.environ['REGION_NAME'])
-resource_config = ResourceConfig.from_secrets(sm=sm, s3_secret_name="acled_bucket", pg_secret_name="acled_postgres")
+resource_config = load_resource_config()
 
 resources = {
-    "s3": resource_config.s3,
-    "postgres": resource_config.postgres,
-    "s3_io_manager": s3_io_manager,
-    "reports_s3_io_manager": reports_s3_io_manager,
-    "s3_pickle_io_manager": s3_pickle_io_manager,
+    "azure_blob_storage": AzureBlobStorageResource(account_url=resource_config['storage_account']['url'],
+                                                credential=AzureBlobStorageDefaultCredential())
 }
 
 all_jobs = [acled_update_job]
-all_assets = load_assets_from_modules([base_assets, report, ml, country_assets])
-all_asset_checks = load_asset_checks_from_modules([acled_checks])
-all_sensors = [acled_sensor, s3_data_availability_sensor]
-
+first_asset = load_assets_from_modules([azure_asset])
+all_sensors = [acled_sensor]
 multiprocess_executor_def = multiprocess_executor.configured({
     "max_concurrent": 4,    
 })
 
 defs = Definitions(
-    assets=all_assets, 
-    asset_checks=all_asset_checks,
+    assets=first_asset, 
     resources=resources,
     jobs=all_jobs,
     sensors=all_sensors, 
-    schedules=[daily_schedule],
     executor=multiprocess_executor_def
 )

@@ -1,12 +1,19 @@
 from datetime import date, datetime
+import io
 
 import aiohttp
 import dagster as dg
-from dagster_acled.partitions import daily_partition
-from dagster_acled.utils import fetch_page
 from dagster_acled.acled_request_config import AcledConfig
-from dagster_acled.resources.resources import PostgreSQLResource
+from dagster_acled.partitions import daily_partition
+from dagster_acled.resources.resources import (
+    AzureBlobStorageResource,
+    PostgreSQLResource,
+    ResourceConfig,
+)
+from dagster_acled.utils import fetch_page
+from dagster_azure.blob import AzureBlobStorageResource
 import polars as pl
+
 
 @dg.asset(
     name="acled_daily_data", 
@@ -92,7 +99,7 @@ async def acled_request_daily(
         )
     })
     
-    # Return DataFrame - IO manager handles S3 storage
+    # IO manager handles S3 storage
     return df
 
 
@@ -113,7 +120,6 @@ async def acled_daily_to_postgres(
     """
     partition_date = context.partition_time_window.start.date()
     
-    # acled_daily_data is automatically loaded from S3 by the IO manager
     context.log.info(f"Processing {len(acled_daily_data)} records for {partition_date}")
     
     # Cast types (ensure data consistency)
@@ -128,7 +134,6 @@ async def acled_daily_to_postgres(
         pl.col("fatalities").cast(pl.Int32, strict=False),
         pl.col("latitude").cast(pl.Float64, strict=False),
         pl.col("longitude").cast(pl.Float64, strict=False),
-        # Handle timestamp conversion safely
         pl.when(pl.col("timestamp").is_not_null())
         .then(
             pl.col("timestamp")
@@ -151,7 +156,7 @@ async def acled_daily_to_postgres(
     missing = []
     if first != partition_date or last != partition_date:
         context.log.error(
-            f"Missing or out-of-range data for {partition_date}: fetched {first}→{last}"
+            f"Missing or out-of-range data for {partition_date}: fetched {first}->{last}"
         )
         missing = [partition_date]
 
@@ -299,3 +304,98 @@ async def acled_daily_to_postgres(
     metadata.update(missing_totals)
 
     return dg.MaterializeResult(metadata=metadata)
+
+
+
+@dg.asset(
+    name="acled_azure_daily_data", 
+    partitions_def=daily_partition,
+    description="Fetch ACLED events for the current day and store in Azure Blob Storage.",
+    group_name="acled",
+)
+async def acled_azure_request_daily(
+    context: dg.AssetExecutionContext,
+    config: AcledConfig,
+) -> None:  
+    """
+    Fetch ACLED events for this day's partition.
+    Uploads directly to Azure Blob Storage using Polars.
+    """
+    day: date = context.partition_time_window.start.date()
+    
+    url = f"{config.base_url.rstrip('/')}/{config.endpoint}"
+    all_rows = []
+    page = 1
+    
+    # Get OAuth authentication parameters and headers
+    base_params, headers = await config.build_params()
+    
+    async with aiohttp.ClientSession() as session:
+        while True:
+            # Start with base params and add pagination/date filters
+            params = base_params.copy()
+            params.update({
+                "limit": config.max_pages,
+                "page": page,
+                "event_date": day.isoformat(),
+                "event_date_where": "=",
+            })
+            
+            # Pass headers to fetch_page function
+            chunk = await fetch_page(session, url, params, headers=headers)
+            if not chunk:
+                context.log.warning(f'Maximum limit of {config.max_pages} pages requests exceeded!')
+                break
+            
+            all_rows.extend(chunk)
+            
+            if len(chunk) < config.max_pages:
+                break
+                
+            page += 1
+    
+    df = pl.DataFrame(all_rows)
+    
+    if len(df) == 0:
+        context.log.error(f"No data returned for day {day}.")
+        raise dg.DagsterInvalidSubsetError()
+    
+    # Verify that event_date matches the partition day
+    if not df.is_empty():
+        dates = df.select(pl.col("event_date").cast(pl.Date)).to_series().unique().sort()
+        if len(dates) > 1 or (len(dates) == 1 and dates[0] != day):
+            context.log.warning(
+                f"Unexpected event_date values for partition {day}: "
+                f"found dates {dates.to_list()}"
+            )
+    
+    context.log.info(f"Fetched {len(df)} records for {day}")
+    
+    event_type_counts = (df.select("event_type")
+                        .to_series()
+                        .value_counts()
+                        .sort("count", descending=True))
+    
+    resource_dict = ResourceConfig.load_resource_config()
+
+    df.write_parquet(
+        file=f"az://{resource_dict['storage_account']['container']}/daily_data/africa/event_date={day}/0.parquet",
+        storage_options={'account_name': resource_dict['storage_account']['name']}, 
+        credential_provider=ResourceConfig.blob_credential_provider,
+    )
+
+    
+    # Add metadata
+    context.add_output_metadata({
+        "event_date": dg.TimestampMetadataValue(
+            datetime.combine(day, datetime.min.time()).timestamp()
+        ),
+        "number_of_records": len(df),
+        "event_type_distribution": dg.TableMetadataValue(
+            records=[dg.TableRecord(record) for record in event_type_counts.to_dicts()],
+            schema=dg.TableSchema(columns=[
+                dg.TableColumn(name="event_type"),
+                dg.TableColumn(name="count", type="int"),
+            ])
+        )
+    })
