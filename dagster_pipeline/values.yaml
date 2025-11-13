@@ -660,6 +660,8 @@ runLauncher:
       runK8sConfig: 
         podSpecConfig:
           serviceAccountName: "my-app-service-account"
+          imagePullSecrets:              
+            - name: acr-secret 
         containerConfig:
           env:
             - name: AZURE_CLIENT_ID
@@ -1159,7 +1161,7 @@ dagsterDaemon:
     config:
       queuedRunCoordinator:
         # The maximum number of runs to allow to be running at once. Defaults to no limit.
-        maxConcurrentRuns: ~
+        maxConcurrentRuns: 3
         # Tag based concurrency limits. See https://docs.dagster.io/deployment/run-coordinator#usage
         # for examples.
         tagConcurrencyLimits: []

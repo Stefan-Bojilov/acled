@@ -1,0 +1,42 @@
+defaults:
+  repository_root: "."
+  code_path: "dagster_acled/definitions.py"  
+  dagster_version: "1.12.0"  
+  cicd: false
+  use_project_name: True
+  use_latest_chart_version: True
+
+  docker:
+    docker_root: "."
+    dockerfile: "Dockerfile"
+    image_prefix: "dagster-acled"
+    use_az_login: True
+    docker_env_vars: []
+
+  helm:
+    skip_schema_validation: False
+
+  kubernetes:
+    namespace: dagster
+    requests:
+      cpu: 150m
+      memory: 750Mi
+    limits:
+      cpu: 2000m
+      memory: 2000Mi
+    user_code_deployment_env: []
+    user_code_deployment_env_secrets: []
+
+  chart: {}
+
+dev:
+  environment: dev
+  
+  docker:
+    container_registry: devacracled.azurecr.io
+
+  kubernetes:
+    context: "your-aks-context-name"  # You'll need to update this
+    user_code_deployment_env:
+      - name: ENVIRONMENT
+        value: dev

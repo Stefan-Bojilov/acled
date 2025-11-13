@@ -115,3 +115,29 @@ async def acled_azure_request_daily(
             ])
         )
     })
+
+
+@dg.asset(
+    name="acled_jnim_data", 
+    partitions_def=daily_partition,
+    description="Fetch ACLED events for the current day containg JNIM as an actor and store in Azure Blob Storage.",
+    group_name="acled",
+)
+async def acled_azure_request_daily(
+    context: dg.AssetExecutionContext,
+    config: AcledConfig,
+) -> None:  
+    """
+    Fetch ACLED events for this day's partition.
+    Uploads directly to Azure Blob Storage using Polars.
+    """
+
+    resource_dict = ResourceConfig.load_resource_config()
+    
+    df: pl.DataFrame = pl.read_parquet(
+        file=f"az://{resource_dict['storage_account']['container']}/daily_data/JNIM/*",
+        storage_options={'account_name': resource_dict['storage_account']['name']}, 
+        credential_provider=ResourceConfig.blob_credential_provider,
+    )
+
+    last_day = df.select('event_date')
