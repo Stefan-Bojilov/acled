@@ -79,7 +79,7 @@ async def acled_azure_request_daily(
     
     resource_dict = ResourceConfig.load_resource_config()
 
-    df.with_columns([
+    df = df.with_columns([
             pl.col("event_date").str.strptime(pl.Date, "%Y-%m-%d", strict=False),
             pl.col("year").cast(pl.Int16, strict=False),
             pl.col("time_precision").cast(pl.Int16, strict=False),
