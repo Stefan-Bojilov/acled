@@ -32,7 +32,10 @@ jobs:
     - name: Set kubeconfig
       run: |
         mkdir -p $HOME/.kube
-        echo "${{ secrets.KUBE_CONFIG_BASE64 }}" | base64 -d > $HOME/.kube/config
+        cat > $HOME/.kube/config << 'EOF'
+        ${{ secrets.KUBE_CONFIG }}
+        EOF
+        chmod 600 $HOME/.kube/config
 
     - name: Deploy with Helm
       run: |
