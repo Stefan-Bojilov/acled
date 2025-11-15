@@ -44,3 +44,8 @@ jobs:
           -n dagster \
           -f dagster_pipeline/values.yaml \
           --wait
+
+    - name: Restart deployment
+      run: |
+        kubectl rollout restart deployment -l component=user-deployments -n dagster
+        kubectl rollout status deployment -l component=user-deployments -n dagster --timeout=5m
