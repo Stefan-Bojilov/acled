@@ -174,7 +174,7 @@ async def jnim_events_consolidated(
         credential_provider=ResourceConfig.blob_credential_provider,
     )
     
-    context.log.info(f"Written consolidated JNIM events to {output_path}")
+    context.log.info(f"Written consolidated JNIM events to path {output_path}")
     
     # Generate metadata
     date_range = jnim_df.select([
