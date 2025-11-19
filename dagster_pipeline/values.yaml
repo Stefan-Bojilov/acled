@@ -199,7 +199,13 @@ dagsterWebserver:
   tolerations: []
   podSecurityContext: {}
   securityContext: {}
-  resources: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
 
   # Configure initContainer resources separately from main container
   initContainerResources: {}
@@ -1346,7 +1352,13 @@ dagsterDaemon:
   tolerations: []
   podSecurityContext: {}
   securityContext: {}
-  resources: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
 
   # Configure initContainer resources separately from main container
   initContainerResources: {}
