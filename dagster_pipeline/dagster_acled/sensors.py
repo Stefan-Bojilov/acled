@@ -13,7 +13,7 @@ from dagster_aws.s3 import S3Resource
 
 @dg.sensor(
     job=acled_update_job,
-    minimum_interval_seconds=172800,  
+    minimum_interval_seconds=86400,  
     description="Monitor ACLED API for new data and trigger backfill runs", 
 )
 def acled_sensor(context: dg.SensorEvaluationContext) -> list[dg.RunRequest]:
